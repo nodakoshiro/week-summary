@@ -36,7 +36,8 @@ function buildHomeCard(summary) {
   if (shown === 0) {
     section.addWidget(
       CardService.newTextParagraph().setText(
-        '該当する予定がありません。予定に色を設定するか、設定画面で色とラベルの対応を登録してください。'
+        '該当する予定がありません。予定に色を設定するか、設定画面で色とラベルの対応を登録してください。' +
+          'ライラックなど、設定画面にない色は判定できません。'
       )
     );
   }
@@ -62,6 +63,13 @@ function buildSettingsCard(config) {
   );
 
   var colorSection = CardService.newCardSection().setHeader('予定の色');
+
+  // 2026年に増えた13色は、CalendarApp でもカレンダー API でも色の情報が返らない
+  colorSection.addWidget(
+    CardService.newTextParagraph().setText(
+      'ここにない色（ライラックなど）は、今は判定できません。その色の予定はタグで分類してください。'
+    )
+  );
 
   COLOR_IDS.forEach(function (id) {
     colorSection.addWidget(
