@@ -1,0 +1,4 @@
+# clasp に渡すのは .gs とマニフェストだけ
+**/**
+!appsscript.json
+!*.gs

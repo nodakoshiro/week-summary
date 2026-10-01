@@ -1,0 +1,11 @@
+{
+  "name": "week-summary",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Google カレンダーの週次サマリーアドオン",
+  "scripts": {
+    "test": "node tools/test.js",
+    "push": "clasp push",
+    "open": "clasp open"
+  }
+}
