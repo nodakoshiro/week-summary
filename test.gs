@@ -12,6 +12,9 @@ var TEST_CONFIG = {
   amountPattern: '[¥￥]\\s*([0-9,]+)'
 };
 
+// summarize に渡す週の範囲。表示に使う項目だけあればよい
+var TEST_RANGE = { label: '9/29 - 10/5', weekStartsOn: 1 };
+
 // 月曜 0:00 を起点にした相対時刻でイベントを作る
 function ev(dayIndex, startHour, durationMin, title, options) {
   var opts = options || {};
@@ -85,6 +88,56 @@ function runTests() {
 
     assertEqual(result['運動'].minutes, 0);
     assertEqual(result['運動'].count, 1);
+  });
+
+  check(failures, '終日予定は週に入る日数で数える', function () {
+    var result = aggregate([
+      ev(5, 0, 2 * 1440, '旅行', { colorId: '10', allDay: true })
+    ], TEST_CONFIG);
+
+    assertEqual(Object.keys(result['運動'].allDayByDay).length, 2);
+    assertEqual(result['運動'].minutes, 0);
+  });
+
+  check(failures, '週をまたぐ終日予定は週に入る日だけ数える', function () {
+    var result = aggregate([
+      ev(-1, 0, 3 * 1440, '前の週から', { colorId: '10', allDay: true }),
+      ev(6, 0, 3 * 1440, '合宿 #読書', { allDay: true })
+    ], TEST_CONFIG);
+
+    assertEqual(Object.keys(result['運動'].allDayByDay).length, 2);
+    assertEqual(Object.keys(result['#読書'].allDayByDay).length, 1);
+  });
+
+  check(failures, '同じ日に重なる終日予定は1日と数える', function () {
+    var result = aggregate([
+      ev(2, 0, 1440, '遠征', { colorId: '10', allDay: true }),
+      ev(2, 0, 1440, '試合', { colorId: '10', allDay: true })
+    ], TEST_CONFIG);
+
+    assertEqual(Object.keys(result['運動'].allDayByDay).length, 1);
+    assertEqual(result['運動'].count, 2);
+  });
+
+  check(failures, '終日予定しかない行は日数を出す', function () {
+    var row = summarize([
+      ev(5, 0, 2 * 1440, '旅行', { colorId: '10', allDay: true })
+    ], [], TEST_CONFIG, TEST_RANGE).rows[0];
+
+    assertEqual(row.value, '終日 2日');
+    assertEqual(row.detail, '土・日');
+    assertEqual(row.delta, '先週比 +2日');
+  });
+
+  check(failures, '時間の予定と終日予定がある行は両方出す', function () {
+    var row = summarize([
+      ev(0, 7, 60, 'ジム', { colorId: '10' }),
+      ev(2, 0, 1440, '遠征', { colorId: '10', allDay: true })
+    ], [], TEST_CONFIG, TEST_RANGE).rows[0];
+
+    assertEqual(row.value, '1時間');
+    assertEqual(row.detail, '月 1時間 / 終日 1日');
+    assertEqual(row.delta, '先週比 +1時間');
   });
 
   check(failures, '辞退した予定は除外する', function () {

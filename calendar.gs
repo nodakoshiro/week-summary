@@ -22,8 +22,8 @@ function toInternalEvent(event, range) {
     endMs: event.getEndTime().getTime(),
     allDay: event.isAllDayEvent(),
     declined: isDeclined(event),
-    // 色を指定していない予定（カレンダーの既定色）は空文字が返る想定。
-    // 実機で必ず確認すること。
+    // 色を指定していない予定（カレンダーの既定色）は空文字が返る。
+    // 2026-10-01 に実機で確認済み。
     colorId: readColor(event),
     // 週の何日目か。0 = 週の初日。タイムゾーンはここで吸収する。
     dayIndex: Math.floor((startMs - range.start.getTime()) / 86400000)

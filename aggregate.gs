@@ -101,7 +101,7 @@ function classify(event, config) {
 function aggregate(events, config) {
   var buckets = {};
   labelsOf(config).forEach(function (label) {
-    buckets[label] = { label: label, count: 0, minutes: 0, amount: 0, byDay: {} };
+    buckets[label] = { label: label, count: 0, minutes: 0, amount: 0, byDay: {}, allDayByDay: {} };
   });
 
   events.forEach(function (event) {
@@ -120,8 +120,11 @@ function aggregate(events, config) {
       return;
     }
 
-    // 終日予定は 24 時間として入ってくるので時間集計から外す
-    if (event.allDay) return;
+    // 終日予定は 24 時間として入ってくるので、時間ではなく週に入る日を数える
+    if (event.allDay) {
+      markAllDayDays(bucket.allDayByDay, event);
+      return;
+    }
 
     var minutes = Math.max(0, Math.round((event.endMs - event.startMs) / 60000));
     bucket.minutes += minutes;
@@ -134,30 +137,77 @@ function aggregate(events, config) {
   return buckets;
 }
 
+/**
+ * 終日予定がかかる日に、週の中（0〜6）に限って印をつける。
+ * 終日予定は最終日の翌日 0:00 で終わるので、長さを日に直せば何日分かわかる。
+ * 同じ日に終日予定が重なっても1日と数える。
+ */
+function markAllDayDays(allDayByDay, event) {
+  var days = Math.max(1, Math.round((event.endMs - event.startMs) / 86400000));
+  var first = Math.max(0, event.dayIndex);
+  var last = Math.min(6, event.dayIndex + days - 1);
+
+  for (var day = first; day <= last; day++) {
+    allDayByDay[day] = true;
+  }
+}
+
+function countDays(allDayByDay) {
+  return Object.keys(allDayByDay).length;
+}
+
 function summarize(thisEvents, prevEvents, config, range) {
   var now = aggregate(thisEvents, config);
   var prev = aggregate(prevEvents, config);
 
   var rows = labelsOf(config).map(function (label) {
     var n = now[label];
-    var p = prev[label];
-    var isMoney = n.amount > 0;
+    var shown = describeBucket(n, prev[label], range.weekStartsOn);
 
     return {
       label: label,
       count: n.count,
-      value: isMoney ? formatAmount(n.amount) : formatMinutes(n.minutes),
-      detail: isMoney
-        ? n.count + '件'
-        : buildDayDetail(n.byDay, range.weekStartsOn),
-      delta: isMoney
-        ? formatDelta(n.amount - p.amount, formatAmount)
-        : formatDelta(n.minutes - p.minutes, formatMinutes),
+      value: shown.value,
+      detail: shown.detail,
+      delta: shown.delta,
       goal: buildGoal(label, n.minutes, config)
     };
   });
 
   return { rangeLabel: range.label, rows: rows };
+}
+
+/**
+ * 行に出す値・内訳・先週比を作る。
+ * 金額があれば金額、終日予定しかなければ日数、それ以外は時間で出す。
+ */
+function describeBucket(n, p, weekStartsOn) {
+  if (n.amount > 0) {
+    return {
+      value: formatAmount(n.amount),
+      detail: n.count + '件',
+      delta: formatDelta(n.amount - p.amount, formatAmount)
+    };
+  }
+
+  var days = countDays(n.allDayByDay);
+
+  if (n.minutes === 0 && days > 0) {
+    return {
+      value: '終日 ' + formatDays(days),
+      detail: buildAllDayDetail(n.allDayByDay, weekStartsOn),
+      delta: formatDelta(days - countDays(p.allDayByDay), formatDays)
+    };
+  }
+
+  var detail = buildDayDetail(n.byDay, weekStartsOn);
+  if (days > 0) detail += ' / 終日 ' + formatDays(days);
+
+  return {
+    value: formatMinutes(n.minutes),
+    detail: detail,
+    delta: formatDelta(n.minutes - p.minutes, formatMinutes)
+  };
 }
 
 /** 目標が設定されていれば達成率を返す。なければ null。 */
@@ -202,6 +252,10 @@ function formatAmount(amount) {
   return '¥' + String(Math.round(amount)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+function formatDays(days) {
+  return days + '日';
+}
+
 function formatDelta(diff, formatter) {
   if (diff === 0) return '先週比 ±0';
   return '先週比 ' + (diff > 0 ? '+' : '−') + formatter(Math.abs(diff));
@@ -219,6 +273,17 @@ function buildDayDetail(byDay, weekStartsOn) {
   return parts.length ? parts.join(' / ') : '予定なし';
 }
 
+/** 終日予定がかかった曜日を「土・日」の形で並べる。 */
+function buildAllDayDetail(allDayByDay, weekStartsOn) {
+  return Object.keys(allDayByDay)
+    .map(Number)
+    .sort(function (a, b) { return a - b; })
+    .map(function (dayIndex) {
+      return DAY_LABELS[(weekStartsOn + dayIndex) % 7];
+    })
+    .join('・');
+}
+
 // Node から require できるようにする。Apps Script 側では module が
 // 未定義なのでこのブロックは無視される。
 if (typeof module !== 'undefined') {
@@ -233,6 +298,8 @@ if (typeof module !== 'undefined') {
     parseAmount: parseAmount,
     formatMinutes: formatMinutes,
     formatAmount: formatAmount,
-    buildDayDetail: buildDayDetail
+    formatDays: formatDays,
+    buildDayDetail: buildDayDetail,
+    buildAllDayDetail: buildAllDayDetail
   };
 }
